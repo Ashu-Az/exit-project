@@ -6,18 +6,16 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password?: string;
-  roleId: string; // Reference to Role document
+  roleId: string; 
   isActive: boolean;
   lastLogin?: Date;
   createdAt: Date;
   updatedAt: Date;
   isBlocked: boolean;
   
-  // Additional user info
   phoneNumber?: string;
   profileImage?: string;
   
-  // Security
   lastPasswordChange?: Date;
   loginAttempts: number;
   accountLocked: boolean;
