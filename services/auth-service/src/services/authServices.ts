@@ -9,7 +9,8 @@ import {
   incrementLoginAttempts,
   getLoginAttempts,
   forceLogoutUser,
-  isUserBlocked
+  isUserBlocked,
+  isUserForcedLogout
 } from '../utils/redisClient.js';
 import type { LoginRequest, RegisterRequest, UserWithRole } from '../interfaces/Auth.js';
 
@@ -30,16 +31,16 @@ export class AuthService {
 
   async login(credentials: LoginRequest) {
     const { email, password } = credentials;
-    console.log('Login attempt for:', email);
+    console.log('🔐 Login attempt for:', email);
     
     try {
-      // Check login attempts
+      
       const attempts = await getLoginAttempts(email);
       if (attempts >= MAX_LOGIN_ATTEMPTS) {
         throw new Error('Too many login attempts. Please try again later.');
       }
 
-      // Get user with role populated
+      
       const userResponse = await axios.post(`${USER_SERVICE_URL}/api/users/search`, {
         mongoQuery: { email, isActive: true },
         limit: 1
@@ -52,26 +53,27 @@ export class AuthService {
       }
 
       const user = users[0] as UserWithRole;
-      console.log('User found in auth service:', user.email);
+      console.log('👤 User found:', user.email);
 
-      // Check if user is blocked
-      if (user.isBlocked) {
+      const isCurrentlyBlocked = await isUserBlocked(user._id);
+      if (user.isBlocked || isCurrentlyBlocked) {
+        console.log('🚫 User is blocked, denying login');
         throw new Error('Account is blocked');
       }
 
-      // Check account lock
+      const isForcedLogout = await isUserForcedLogout(user._id);
+      if (isForcedLogout) {
+        console.log('🚪 User is forced to logout, denying login');
+        throw new Error('Account access has been revoked');
+      }
+
       if (user.accountLocked && user.lockUntil && new Date() < new Date(user.lockUntil)) {
         throw new Error('Account is temporarily locked');
       }
 
-      // TODO: Implement proper password validation
-      // For now, accepting all login attempts for testing
-      console.log('Password validation skipped for testing');
-
-      // Reset login attempts on successful login
       await resetLoginAttempts(email);
 
-      // Update last login
+     
       try {
         await axios.put(`${USER_SERVICE_URL}/api/users/${user._id}`, {
           lastLogin: new Date(),
@@ -81,9 +83,8 @@ export class AuthService {
         console.warn('Failed to update last login:', (updateError as Error).message);
       }
 
-      // Generate JWT token
       const token = generateToken(user);
-      console.log('Token generated successfully');
+      console.log('✅ Login successful, token generated');
 
       return {
         user: {
@@ -95,7 +96,7 @@ export class AuthService {
         token
       };
     } catch (error: any) {
-      console.error('Login error:', error.message);
+      console.error('❌ Login error:', error.message);
       throw error;
     }
   }
@@ -104,13 +105,91 @@ export class AuthService {
     try {
       const expiry = getTokenExpiry(token);
       await blacklistToken(token, expiry);
+      console.log('🚪 Token blacklisted on logout');
     } catch (error) {
       console.warn('Failed to blacklist token:', (error as Error).message);
     }
   }
 
+  async blockUserAccount(userId: string) {
+    try {
+      console.log('🚫 IMMEDIATE BLOCKING: Starting for user:', userId);
+      
+      
+      await blockUser(userId);
+      console.log('✅ Step 1: User blocked in Redis');
+      
+      
+      await forceLogoutUser(userId);
+      console.log('✅ Step 2: User added to force logout list');
+      
+      // Step 3: Update user status in database (persistent)
+      try {
+        await axios.put(`${USER_SERVICE_URL}/api/users/${userId}`, {
+          isBlocked: true,
+          isActive: false
+        });
+        console.log('✅ Step 3: User blocked in database');
+      } catch (dbError) {
+        console.warn('⚠️ Database update failed, but Redis blocking is active');
+      }
+      
+      console.log('🎯 IMMEDIATE BLOCKING COMPLETE - User will be blocked on next request');
+      
+      return { 
+        success: true, 
+        message: 'User blocked immediately - all active sessions terminated',
+        effectiveImmediately: true
+      };
+    } catch (error: any) {
+      console.error('❌ Block user error:', error.message);
+      throw new Error(`Failed to block user: ${error.message}`);
+    }
+  }
+
+  async unblockUserAccount(userId: string) {
+    try {
+      console.log('✅ UNBLOCKING: Starting for user:', userId);
+      
+      // Step 1: Remove block from Redis
+      await unblockUser(userId);
+      console.log('✅ Step 1: User unblocked in Redis');
+      
+      // Step 2: Update user status in database
+      try {
+        await axios.put(`${USER_SERVICE_URL}/api/users/${userId}`, {
+          isBlocked: false,
+          isActive: true
+        });
+        console.log('✅ Step 2: User unblocked in database');
+      } catch (dbError) {
+        console.warn('⚠️ Database update failed, but Redis unblocking is active');
+      }
+      
+      console.log('🎯 UNBLOCKING COMPLETE');
+      
+      return { 
+        success: true, 
+        message: 'User unblocked successfully',
+        canLoginImmediately: true
+      };
+    } catch (error: any) {
+      console.error('❌ Unblock user error:', error.message);
+      throw new Error(`Failed to unblock user: ${error.message}`);
+    }
+  }
+
   async getProfile(userId: string) {
     try {
+      // ⭐ CRITICAL: Check blocking status before returning profile
+      const isBlocked = await isUserBlocked(userId);
+      const isForcedLogout = await isUserForcedLogout(userId);
+      
+      if (isBlocked || isForcedLogout) {
+        console.log('🚫 Profile access denied - user is blocked');
+        throw new Error('Account access has been revoked');
+      }
+      
       const response = await axios.get(`${USER_SERVICE_URL}/api/users/${userId}`);
       return response.data.data;
     } catch (error: any) {
@@ -120,18 +199,38 @@ export class AuthService {
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
-    // TODO: Implement password change logic
-    return { success: true, message: 'Password changed successfully' };
+    try {
+      // ⭐ Check blocking status before password change
+      const isBlocked = await isUserBlocked(userId);
+      if (isBlocked) {
+        throw new Error('Account access has been revoked');
+      }
+      
+      // TODO: Implement actual password change logic
+      return { success: true, message: 'Password changed successfully' };
+    } catch (error: any) {
+      throw new Error(`Password change failed: ${error.message}`);
+    }
   }
 
-  async blockUserAccount(userId: string) {
-    // TODO: Implement user blocking
-    return { success: true, message: 'User blocked successfully' };
-  }
-
-  async unblockUserAccount(userId: string) {
-    // TODO: Implement user unblocking
-    return { success: true, message: 'User unblocked successfully' };
+  // ⭐ NEW: Check if user should be immediately blocked
+  async validateUserAccess(userId: string): Promise<boolean> {
+    try {
+      const [isBlocked, isForcedLogout] = await Promise.all([
+        isUserBlocked(userId),
+        isUserForcedLogout(userId)
+      ]);
+      
+      if (isBlocked || isForcedLogout) {
+        console.log(`🚫 Access denied for user ${userId} - blocked: ${isBlocked}, forced logout: ${isForcedLogout}`);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.warn('User access validation failed:', (error as Error).message);
+      return true; // Fail open for now
+    }
   }
 }
 

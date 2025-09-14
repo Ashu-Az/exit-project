@@ -256,7 +256,7 @@ class BunRedisStorage {
     }, false);
   };
   
-  // Force logout functions
+
   export const forceLogoutUser = async (userId: string): Promise<void> => {
     await safeOperation(async () => {
       await redisClient.setEx(`force_logout:${userId}`, 86400, 'true');
