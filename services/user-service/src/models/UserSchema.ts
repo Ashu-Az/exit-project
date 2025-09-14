@@ -5,7 +5,7 @@ interface UserDocument {
   name: string;
   email: string;
   password?: string;
-  roleId: mongoose.Types.ObjectId;
+  roleId?: string; // Changed from ObjectId to string
   isActive: boolean;
   lastLogin?: Date;
   isBlocked: boolean;
@@ -39,9 +39,8 @@ const UserSchema = new Schema<UserDocument>(
       required: true,
     },
     roleId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Role',
-      required: true
+      type: String, // Changed from ObjectId to String
+      required: false, // Make optional for now
     },
     isActive: {
       type: Boolean,

@@ -5,7 +5,7 @@ export const createUserSchema = z.object({
     name: z.string().min(2).max(100).trim(),
     email: z.string().email().toLowerCase(),
     password: z.string().min(6),
-    roleId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid role ID'),
+    roleId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid role ID').optional(),
     phoneNumber: z.string().optional()
   })
 });
@@ -25,13 +25,20 @@ export const updateUserSchema = z.object({
 
 export const searchUsersSchema = z.object({
   body: z.object({
-    mongoQuery: z.object({}).passthrough(),
+    mongoQuery: z.object({}).passthrough().default({}),
     page: z.number().min(1).default(1),
     limit: z.number().min(1).max(1000).default(10),
     sortBy: z.string().default('createdAt'),
     sortOrder: z.enum(['asc', 'desc']).default('desc'),
-    projection: z.object({}).passthrough().optional(),
+    projection: z.object({}).passthrough().default({}),
     search: z.string().optional()
+  }).default({
+    mongoQuery: {},
+    page: 1,
+    limit: 10,
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
+    projection: {}
   })
 });
 

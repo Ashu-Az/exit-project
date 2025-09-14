@@ -1,6 +1,7 @@
 {
   "name": "user-service",
   "version": "1.0.0",
+  "type": "module",
   "main": "src/app.ts",
   "scripts": {
     "dev": "bun --watch src/app.ts",
@@ -17,7 +18,8 @@
     "mongoose": "^8.18.1",
     "morgan": "^1.10.0",
     "redis": "^4.6.10",
-    "zod": "^4.1.8"
+    "zod": "^4.1.8",
+    "axios": "^1.6.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

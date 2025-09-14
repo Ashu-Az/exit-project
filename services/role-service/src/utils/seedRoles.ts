@@ -1,5 +1,8 @@
 import mongoose from 'mongoose';
 import { Role } from '../models/Role.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const STATIC_ROLES = [
   {
@@ -45,15 +48,28 @@ const STATIC_ROLES = [
 
 export async function seedRoles() {
   try {
+    console.log('🌱 Starting role seeding...');
+    
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/exit_interview_platform');
+    console.log('✅ Connected to MongoDB for seeding');
     
     for (const roleData of STATIC_ROLES) {
-      await Role.findOneAndUpdate(
-        { name: roleData.name },
-        roleData,
-        { upsert: true, new: true }
-      );
-      console.log(`✅ Role ${roleData.name} created/updated`);
+      const existingRole = await Role.findOne({ name: roleData.name });
+      
+      if (existingRole) {
+        // Update existing role
+        await Role.findOneAndUpdate(
+          { name: roleData.name },
+          roleData,
+          { new: true }
+        );
+        console.log(`✅ Role ${roleData.name} updated`);
+      } else {
+        // Create new role
+        const role = new Role(roleData);
+        await role.save();
+        console.log(`✅ Role ${roleData.name} created`);
+      }
     }
     
     console.log('🎯 All roles seeded successfully');
@@ -64,6 +80,7 @@ export async function seedRoles() {
   }
 }
 
-if (require.main === module) {
+// Run if called directly
+if (import.meta.url === `file://${process.argv[1]}`) {
   seedRoles();
 }

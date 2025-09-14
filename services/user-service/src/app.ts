@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 // @ts-ignore
-import userRoutes from './routes/userRoutes';
+import userRoutes from './routes/userRoutes.js';
 
 dotenv.config();
 
@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3003;
 
 // Database connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/exit_interview_platform')
-  .then(() => console.log('✅ MongoDB Connected'))
+  .then(() => console.log('✅ MongoDB Connected to User Service'))
   .catch(err => console.error('❌ MongoDB connection failed:', err));
 
 // Middleware
@@ -44,10 +44,11 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
+  console.error('User Service Error:', err);
   res.status(500).json({
     success: false,
-    error: 'Internal Server Error'
+    error: err.message || 'Internal Server Error',
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
 

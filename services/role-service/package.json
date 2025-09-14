@@ -1,6 +1,7 @@
 {
   "name": "role-service",
   "version": "1.0.0",
+  "type": "module",
   "main": "src/app.ts",
   "scripts": {
     "dev": "bun --watch src/app.ts",
